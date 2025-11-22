@@ -71,3 +71,4 @@ jobs:
             echo "::error::Semgrep found security issues!"
             exit 1
           fi
+
