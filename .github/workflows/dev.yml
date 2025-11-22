@@ -25,7 +25,7 @@ jobs:
         uses: docker://docker.io/fluidattacks/sast:latest
         continue-on-error: true
         with:
-          args: sast scan --config .fluidattacks/config.yaml
+          args: sast scan .fluidattacks/config.yaml
 
       - name: Process SAST results
         if: steps.sast.outcome == 'failure' || steps.sast.outcome == 'success'
@@ -54,7 +54,7 @@ jobs:
         uses: docker://docker.io/fluidattacks/sca:latest
         continue-on-error: true
         with:
-          args: sca scan --config .fluidattacks/config.yaml
+          args: sca scan .fluidattacks/config.yaml
 
       - name: Process SCA results
         if: steps.sca.outcome == 'failure' || steps.sca.outcome == 'success'
