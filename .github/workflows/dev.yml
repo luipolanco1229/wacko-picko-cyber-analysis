@@ -58,3 +58,26 @@ jobs:
             Security-SCA.csv
             fluidattacks-sca-config.yaml
           retention-days: 30
+
+  semgrep:
+    name: semgrep/ci - STRICT
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+    container:
+      image: semgrep/semgrep
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run semgrep CI
+        run: |
+          semgrep ci
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::Semgrep found security issues!"
+            exit 1
+          fi
