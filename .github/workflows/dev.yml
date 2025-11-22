@@ -30,15 +30,23 @@ jobs:
       - name: Process SAST results
         if: steps.sast.outcome == 'failure' || steps.sast.outcome == 'success'
         run: |
-          if [ -f fluidattacks-sast-report.json ]; then
+          # Crear directorio de reportes si no existe
+          mkdir -p reports
+          
+          # Verificar si el archivo de reporte CSV existe
+          if [ -f fluidattacks-report.csv ]; then
+            cp fluidattacks-report.csv reports/sast-results.csv
             echo "SAST Report Summary:"
-            jq '.vulnerabilities | length' fluidattacks-sast-report.json || echo "No se pudo analizar el reporte"
-            # Guardar el reporte como artefacto
-            echo "SAST_SCAN_RESULTS=$(cat fluidattacks-sast-report.json | jq -c '.' | base64 -w 0)" >> $GITHUB_ENV
-          fi
-          # Si el paso anterior falló, guardar un reporte vacío
-          if [ $? -ne 0 ]; then
-            echo "SAST_SCAN_RESULTS=$(echo '{"vulnerabilities": []}' | base64 -w 0)" >> $GITHUB_ENV
+            # Contar líneas (restamos 1 por el encabezado)
+            line_count=$(wc -l < reports/sast-results.csv)
+            echo "Vulnerabilidades encontradas: $((line_count - 1))"
+            # Guardar el reporte como variable de entorno (en base64)
+            echo "SAST_SCAN_RESULTS=$(cat reports/sast-results.csv | base64 -w 0)" >> $GITHUB_ENV
+          else
+            echo "No se encontró el archivo de reporte SAST"
+            # Crear archivo CSV vacío con encabezado
+            echo "vulnerability_id,severity,file,line,description,remediation" > reports/sast-results.csv
+            echo "SAST_SCAN_RESULTS=$(echo 'vulnerability_id,severity,file,line,description,remediation' | base64 -w 0)" >> $GITHUB_ENV
           fi
 
       - name: Run FluidAttacks SCA with config
@@ -51,15 +59,20 @@ jobs:
       - name: Process SCA results
         if: steps.sca.outcome == 'failure' || steps.sca.outcome == 'success'
         run: |
-          if [ -f fluidattacks-sca-report.json ]; then
+          # Verificar si el archivo de reporte CSV existe
+          if [ -f fluidattacks-report.csv ]; then
+            cp fluidattacks-report.csv reports/sca-results.csv
             echo "SCA Report Summary:"
-            jq '.vulnerabilities | length' fluidattacks-sca-report.json || echo "No se pudo analizar el reporte"
-            # Guardar el reporte como artefacto
-            echo "SCA_SCAN_RESULTS=$(cat fluidattacks-sca-report.json | jq -c '.' | base64 -w 0)" >> $GITHUB_ENV
-          fi
-          # Si el paso anterior falló, guardar un reporte vacío
-          if [ $? -ne 0 ]; then
-            echo "SCA_SCAN_RESULTS=$(echo '{"vulnerabilities": []}' | base64 -w 0)" >> $GITHUB_ENV
+            # Contar líneas (restamos 1 por el encabezado)
+            line_count=$(wc -l < reports/sca-results.csv)
+            echo "Dependencias vulnerables encontradas: $((line_count - 1))"
+            # Guardar el reporte como variable de entorno (en base64)
+            echo "SCA_SCAN_RESULTS=$(cat reports/sca-results.csv | base64 -w 0)" >> $GITHUB_ENV
+          else
+            echo "No se encontró el archivo de reporte SCA"
+            # Crear archivo CSV vacío con encabezado
+            echo "package_name,version,severity,vulnerability_id,description,remediation" > reports/sca-results.csv
+            echo "SCA_SCAN_RESULTS=$(echo 'package_name,version,severity,vulnerability_id,description,remediation' | base64 -w 0)" >> $GITHUB_ENV
           fi
 
       - name: Generate combined vulnerability report
@@ -68,29 +81,61 @@ jobs:
           # Crear directorio para reportes
           mkdir -p reports
           
-          # Decodificar y guardar reportes individuales
-          if [ -n "$SAST_SCAN_RESULTS" ]; then
-            echo $SAST_SCAN_RESULTS | base64 -d > reports/sast-results.json
+          # Inicializar archivos CSV vacíos si no existen
+          if [ ! -f reports/sast-results.csv ]; then
+            echo "vulnerability_id,severity,file,line,description,remediation" > reports/sast-results.csv
           fi
           
-          if [ -n "$SCA_SCAN_RESULTS" ]; then
-            echo $SCA_SCAN_RESULTS | base64 -d > reports/sca-results.json
+          if [ ! -f reports/sca-results.csv ]; then
+            echo "package_name,version,severity,vulnerability_id,description,remediation" > reports/sca-results.csv
           fi
           
-          # Crear reporte combinado
-          echo '{"sast": ' > reports/combined-results.json
-          cat reports/sast-results.json >> reports/combined-results.json
-          echo ', "sca": ' >> reports/combined-results.json
-          cat reports/sca-results.json >> reports/combined-results.json
-          echo '}' >> reports/combined-results.json
+          # Crear resumen de vulnerabilidades
+          sast_count=$(( $(wc -l < reports/sast-results.csv) - 1 ))
+          sca_count=$(( $(wc -l < reports/sca-results.csv) - 1 ))
+          
+          # Crear archivo de resumen
+          echo "Tipo,Total" > reports/summary.csv
+          echo "Vulnerabilidades SAST,$sast_count" >> reports/summary.csv
+          echo "Vulnerabilidades SCA,$sca_count" >> reports/summary.csv
+          echo "Total,$((sast_count + sca_count))" >> reports/summary.csv
           
           # Mostrar resumen
-          echo " Resumen de vulnerabilidades:"
-          echo "SAST: $(jq '.sast.vulnerabilities | length' reports/combined-results.json) vulnerabilidades"
-          echo "SCA: $(jq '.sca.vulnerabilities | length' reports/combined-results.json) vulnerabilidades"
+          echo "🔍 Resumen de vulnerabilidades:"
+          cat reports/summary.csv | column -t -s,
           
-          # Guardar el reporte combinado como artefacto
-          echo "COMBINED_RESULTS=$(cat reports/combined-results.json | jq -c '.' | base64 -w 0)" >> $GITHUB_ENV
+          # Crear un archivo README.md con instrucciones
+          cat > reports/README.md << 'EOL'
+          # Reportes de Seguridad
+          
+          Este directorio contiene los reportes de seguridad generados por Fluid Attacks.
+          
+          ## Archivos disponibles:
+          - `sast-results.csv`: Vulnerabilidades encontradas en el código fuente
+          - `sca-results.csv`: Dependencias con vulnerabilidades conocidas
+          - `summary.csv`: Resumen de vulnerabilidades encontradas
+          
+          ## Cómo interpretar los reportes:
+          
+          ### SAST (Análisis Estático de Código Fuente)
+          - `vulnerability_id`: Identificador único de la vulnerabilidad
+          - `severity`: Nivel de severidad (Critical, High, Medium, Low)
+          - `file`: Archivo donde se encontró la vulnerabilidad
+          - `line`: Número de línea donde se encontró la vulnerabilidad
+          - `description`: Descripción de la vulnerabilidad
+          - `remediation`: Recomendaciones para solucionar la vulnerabilidad
+          
+          ### SCA (Análisis de Dependencias)
+          - `package_name`: Nombre del paquete vulnerable
+          - `version`: Versión del paquete
+          - `severity`: Nivel de severidad (Critical, High, Medium, Low)
+          - `vulnerability_id`: Identificador de la vulnerabilidad (ej: CVE-XXXX-XXXX)
+          - `description`: Descripción de la vulnerabilidad
+          - `remediation`: Versión recomendada para actualizar
+          EOL
+          
+          # Guardar el resumen como variable de entorno
+          echo "SCAN_SUMMARY=$(cat reports/summary.csv | base64 -w 0)" >> $GITHUB_ENV
 
       - name: Upload vulnerability reports
         if: always()

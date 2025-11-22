@@ -3,8 +3,8 @@
 
 # Configuración general
 output:
-  format: json
-  file: fluidattacks-report.json
+  format: csv
+  file: fluidattacks-report.csv
   verbose: true
 
 # Configuración de SAST
