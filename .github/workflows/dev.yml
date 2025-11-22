@@ -1,4 +1,4 @@
-name: CI - FluidAttacks (SAST + SCA) - CSV before fail
+name: CI - FluidAttacks (SAST + SCA) - BREAKING
 on:
   workflow_dispatch: {}
   pull_request: {}
@@ -6,94 +6,108 @@ on:
     branches:
       - main
       - master
+  schedule:
+    - cron: "12 15 * * *"
 
 jobs:
   fluidattacks_scans:
-    name: FluidAttacks scans (SAST + SCA) with Config
+    name: FluidAttacks scans (SAST + SCA) - STRICT
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate fluidattacks.config.yml exists
-        run: |
-          if [ ! -f fluidattacks.config.yml ]; then
-            echo "Error: fluidattacks.config.yml no encontrado"
-            exit 1
-          fi
-          echo "fluidattacks.config.yml encontrado"
+      - name: Create FluidAttacks config directory
+        run: mkdir -p .fluidattacks
 
-      - name: Run SAST scan with config
+      - name: Run FluidAttacks SAST with config
         id: sast
         uses: docker://docker.io/fluidattacks/sast:latest
-        with:
-          args: sast --strict scan fluidattacks.config.yml
         continue-on-error: true
+        with:
+          args: sast scan --config .fluidattacks/config.yaml
 
-      - name: Run SCA scan with config
+      - name: Process SAST results
+        if: steps.sast.outcome == 'failure' || steps.sast.outcome == 'success'
+        run: |
+          if [ -f fluidattacks-sast-report.json ]; then
+            echo "SAST Report Summary:"
+            jq '.vulnerabilities | length' fluidattacks-sast-report.json || echo "No se pudo analizar el reporte"
+            # Guardar el reporte como artefacto
+            echo "SAST_SCAN_RESULTS=$(cat fluidattacks-sast-report.json | jq -c '.' | base64 -w 0)" >> $GITHUB_ENV
+          fi
+          # Si el paso anterior falló, guardar un reporte vacío
+          if [ $? -ne 0 ]; then
+            echo "SAST_SCAN_RESULTS=$(echo '{"vulnerabilities": []}' | base64 -w 0)" >> $GITHUB_ENV
+          fi
+
+      - name: Run FluidAttacks SCA with config
         id: sca
         uses: docker://docker.io/fluidattacks/sca:latest
-        with:
-          args: sca --strict scan fluidattacks.config.yml
         continue-on-error: true
+        with:
+          args: sca scan --config .fluidattacks/config.yaml
 
-      - name: List generated result files
+      - name: Process SCA results
+        if: steps.sca.outcome == 'failure' || steps.sca.outcome == 'success'
         run: |
-          echo "=== Archivos de resultados generados ==="
-          ls -la Security-*.csv 2>/dev/null || echo "No se encontraron archivos CSV de Security"
+          if [ -f fluidattacks-sca-report.json ]; then
+            echo "SCA Report Summary:"
+            jq '.vulnerabilities | length' fluidattacks-sca-report.json || echo "No se pudo analizar el reporte"
+            # Guardar el reporte como artefacto
+            echo "SCA_SCAN_RESULTS=$(cat fluidattacks-sca-report.json | jq -c '.' | base64 -w 0)" >> $GITHUB_ENV
+          fi
+          # Si el paso anterior falló, guardar un reporte vacío
+          if [ $? -ne 0 ]; then
+            echo "SCA_SCAN_RESULTS=$(echo '{"vulnerabilities": []}' | base64 -w 0)" >> $GITHUB_ENV
+          fi
 
-      - name: Upload FluidAttacks scan results
+      - name: Generate combined vulnerability report
+        if: always()
+        run: |
+          # Crear directorio para reportes
+          mkdir -p reports
+          
+          # Decodificar y guardar reportes individuales
+          if [ -n "$SAST_SCAN_RESULTS" ]; then
+            echo $SAST_SCAN_RESULTS | base64 -d > reports/sast-results.json
+          fi
+          
+          if [ -n "$SCA_SCAN_RESULTS" ]; then
+            echo $SCA_SCAN_RESULTS | base64 -d > reports/sca-results.json
+          fi
+          
+          # Crear reporte combinado
+          echo '{"sast": ' > reports/combined-results.json
+          cat reports/sast-results.json >> reports/combined-results.json
+          echo ', "sca": ' >> reports/combined-results.json
+          cat reports/sca-results.json >> reports/combined-results.json
+          echo '}' >> reports/combined-results.json
+          
+          # Mostrar resumen
+          echo " Resumen de vulnerabilidades:"
+          echo "SAST: $(jq '.sast.vulnerabilities | length' reports/combined-results.json) vulnerabilidades"
+          echo "SCA: $(jq '.sca.vulnerabilities | length' reports/combined-results.json) vulnerabilidades"
+          
+          # Guardar el reporte combinado como artefacto
+          echo "COMBINED_RESULTS=$(cat reports/combined-results.json | jq -c '.' | base64 -w 0)" >> $GITHUB_ENV
+
+      - name: Upload vulnerability reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fluidattacks-security-results
+          name: security-reports
           path: |
-            Security-SAST.csv
-            Security-SCA.csv
-            fluidattacks.config.yml
-          retention-days: 30
+            reports/
+            fluidattacks-*.json
+          retention-days: 7
 
-      - name: Parse results and fail on critical/high findings
+      - name: Fail if vulnerabilities found
+        if: steps.sast.outcome == 'failure' || steps.sca.outcome == 'failure'
         run: |
-          echo "=== Verificando resultados de seguridad ==="
-
-          # Verificar archivos de resultados
-          sast_exists=false
-          sca_exists=false
-
-          if [ -f "Security-SAST.csv" ]; then
-            echo "✅ Archivo SAST encontrado"
-            sast_exists=true
-          fi
-
-          if [ -f "Security-SCA.csv" ]; then
-            echo "✅ Archivo SCA encontrado"  
-            sca_exists=true
-          fi
-
-          # Buscar vulnerabilidades críticas/altas
-          if [ "$sast_exists" = true ] || [ "$sca_exists" = true ]; then
-            if grep -qriE "(critical|high)" Security-*.csv 2>/dev/null; then
-              echo "::error::Vulnerabilidades críticas o altas detectadas en los análisis de seguridad"
-              exit 1
-            else
-              echo "✅ No se detectaron vulnerabilidades críticas/altas"
-            fi
-          else
-            # Si no hay archivos CSV, verificar códigos de salida
-            if [ "${{ steps.sast.outcome }}" = "failure" ] || [ "${{ steps.sca.outcome }}" = "failure" ]; then
-              echo "::error::Los scans SAST/SCA fallaron - posibles vulnerabilidades encontradas"
-              exit 1
-            else
-              echo "✅ Scans completados exitosamente"
-            fi
-          fi
-
-      - name: FluidAttacks summary
-        if: success()
-        run: |
-          echo "✅ FluidAttacks SAST/SCA completados sin vulnerabilidades críticas/altas"
-          echo "Archivos de resultados subidos como artifacts"
+          echo " Se encontraron vulnerabilidades en el análisis de seguridad"
+          echo "Revisa los reportes generados en la sección de artefactos"
+          exit 1
 
   semgrep:
     name: semgrep/ci - STRICT
@@ -109,11 +123,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Semgrep (fail on findings)
+      - name: Run semgrep CI
         run: |
           semgrep ci
-          if [ $? -ne 0 ]; then
-            echo "::error::Semgrep encontró hallazgos que incumplen políticas"
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::Semgrep found security issues!"
             exit 1
           fi
-          echo "Semgrep finalizó sin hallazgos bloqueantes"

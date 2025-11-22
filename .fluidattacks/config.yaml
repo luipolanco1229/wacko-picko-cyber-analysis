@@ -1,0 +1,253 @@
+# Configuración de Fluid Attacks
+# https://docs.fluidattacks.com/tech/scanner/product/sast/configuration/options
+
+# Configuración general
+output:
+  format: json
+  file: fluidattacks-report.json
+  verbose: true
+
+# Configuración de SAST
+sast:
+  # Niveles de severidad a incluir (low, medium, high, critical)
+  include_severity:
+    - low
+    - medium
+    - high
+    - critical
+  
+  # Tipos de vulnerabilidades a incluir
+  include_types:
+    - sql_injection
+    - xss
+    - command_injection
+    - path_traversal
+    - insecure_deserialization
+    - ssrf
+    - xxe
+    - others
+  
+  # Archivos a excluir del análisis
+  exclude_paths:
+    - "**/node_modules/**"
+    - "**/vendor/**"
+    - "**/test/**"
+    - "**/tests/**"
+    - "**/__tests__/**"
+    - "**/*.test.*"
+    - "**/*.spec.*"
+  
+  # Límites de recursos
+  resources:
+    max_memory: 8GB
+    timeout: 1800  # segundos
+
+# Configuración de SCA
+sca:
+  # Niveles de severidad a incluir (low, medium, high, critical)
+  include_severity:
+    - low
+    - medium
+    - high
+    - critical
+  
+  # Tipos de dependencias a analizar
+  package_managers:
+    - npm
+    - yarn
+    - pip
+    - maven
+    - gradle
+    - bundler
+    - composer
+    - nuget
+  
+  # Configuración de actualizaciones de dependencias
+  update_check:
+    enabled: true
+    # Frecuencia de verificación (daily, weekly, monthly)
+    frequency: weekly
+    # Crear PRs automáticamente para actualizaciones de seguridad
+    create_pull_requests: true
+
+# Configuración de notificaciones
+notifications:
+  # Enviar notificaciones por correo cuando se encuentren vulnerabilidades críticas
+  email:
+    enabled: true
+    recipients: []  # Agrega direcciones de correo aquí
+    min_severity: high
+  
+  # Integración con Slack
+  slack:
+    enabled: false
+    webhook_url: ""  # Configura tu webhook de Slack aquí
+    channel: "#security-alerts"
+    min_severity: medium
+
+# Umbrales de fallo
+failure_threshold:
+  # Fallar el pipeline si se encuentran vulnerabilidades con esta severidad o superior
+  severity: medium
+  # O fallar si se supera este número total de vulnerabilidades
+  max_vulnerabilities: 0
+
+# Configuración de autenticación
+auth:
+  # Configuración de credenciales (recomendado usar variables de entorno)
+  # api_key: ${FLUID_ATTACKS_API_KEY}
+  # organization: your-org-name
+
+# Configuración de informes personalizados
+reports:
+  # Generar informe en formato SARIF para GitHub Code Scanning
+  sarif:
+    enabled: true
+    output: reports/fluidattacks.sarif
+  
+  # Generar informe en formato JUnit
+  junit:
+    enabled: true
+    output: reports/fluidattacks-junit.xml
+  
+  # Generar informe HTML
+  html:
+    enabled: true
+    output: reports/fluidattacks-report.html
+    template: default
+
+# Configuración de reglas personalizadas
+custom_rules:
+  # Ruta a un directorio con reglas personalizadas
+  path: .fluidattacks/rules
+  
+  # Habilitar/deshabilitar reglas específicas
+  disabled_rules:
+    - rule_id_1
+    - rule_id_2
+
+# Configuración de CI
+ci:
+  # Configuración específica para GitHub Actions
+  github_actions:
+    # Subir resultados a GitHub Code Scanning
+    upload_to_code_scanning: true
+    # Comentar en PRs con los resultados del análisis
+    comment_on_pr: true
+    # Etiquetas para los comentarios en PRs
+    pr_labels:
+      - security
+      - needs-review
+
+# Configuración de caché
+cache:
+  enabled: true
+  ttl: 86400  # 24 horas en segundos
+  path: .fluidattacks/cache
+
+# Configuración de logs
+logging:
+  level: info  # debug, info, warning, error
+  file: .fluidattacks/fluidattacks.log
+  max_size: 10  # MB
+  max_backups: 3
+
+# Configuración de red
+network:
+  proxy: null  # Configuración de proxy si es necesario
+  timeout: 30  # segundos
+  ssl_verify: true
+
+# Configuración de actualización automática
+auto_update:
+  enabled: true
+  check_interval: 86400  # 24 horas en segundos
+
+# Configuración de plugins
+plugins:
+  # Plugins adicionales para análisis específicos
+  - name: docker
+    enabled: true
+  - name: kubernetes
+    enabled: true
+  - name: terraform
+    enabled: true
+  - name: serverless
+    enabled: true
+
+# Configuración de análisis de secretos
+secrets:
+  enabled: true
+  # Patrones personalizados para detectar secretos
+  custom_patterns:
+    - name: "API Key"
+      pattern: "(?:key|api[_-]?key|apikey|secret|password|token)[\s:=]+([a-zA-Z0-9_\-]{20,})"
+      severity: high
+    - name: "AWS Access Key"
+      pattern: "AKIA[0-9A-Z]{16}"
+      severity: critical
+
+# Configuración de análisis de infraestructura como código (IaC)
+iac:
+  enabled: true
+  # Herramientas de IaC soportadas
+  tools:
+    - terraform
+    - cloudformation
+    - kubernetes
+    - dockerfile
+    - helm
+  # Tipos de recursos a analizar
+  resource_types:
+    - compute
+    - storage
+    - network
+    - iam
+    - database
+
+# Configuración de análisis de contenedores
+container_scanning:
+  enabled: true
+  # Tipos de imágenes a analizar
+  image_types:
+    - docker
+    - oci
+  # Análisis de capas de la imagen
+  layer_analysis: true
+  # Verificar vulnerabilidades en paquetes instalados
+  package_scanning: true
+  # Verificar configuraciones inseguras
+  config_audit: true
+
+# Configuración de análisis de dependencias de desarrollo
+dev_dependencies:
+  enabled: true
+  # Incluir dependencias de desarrollo en el análisis
+  include_dev: false
+  # Umbral de severidad para fallar el pipeline
+  fail_on_severity: high
+
+# Configuración de análisis de licencias
+license_compliance:
+  enabled: true
+  # Política de licencias permitidas
+  allowed_licenses:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+  # Fallar si se encuentran licencias no permitidas
+  fail_on_violation: true
+
+# Configuración de análisis de dependencias obsoletas
+outdated_dependencies:
+  enabled: true
+  # Umbral de antigüedad en días
+  threshold_days: 90
+  # Incluir parches de seguridad
+  include_security_updates: true
+  # Incluir actualizaciones de características
+  include_feature_updates: false
+  # Incluir actualizaciones importantes
+  include_major_updates: false
