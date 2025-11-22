@@ -35,19 +35,17 @@ jobs:
             -e OUTPUT_FORMAT=csv \
             -e OUTPUT_FILE=fluidattacks-sast-report.csv \
             docker.io/fluidattacks/sast:latest .
-          
+
           echo -e "\n=== Verificando salida del comando ==="
           ls -la
         continue-on-error: true
-        with:
-          args: sast scan .fluidattacks/config.yaml
 
       - name: Process SAST results
         if: steps.sast.outcome == 'failure' || steps.sast.outcome == 'success'
         run: |
           # Crear directorio de reportes si no existe
           mkdir -p reports
-          
+
           # Verificar si el archivo de reporte SAST CSV existe
           if [ -f fluidattacks-sast-report.csv ]; then
             cp fluidattacks-sast-report.csv reports/sast-results.csv
@@ -73,12 +71,10 @@ jobs:
             -e OUTPUT_FORMAT=csv \
             -e OUTPUT_FILE=fluidattacks-sca-report.csv \
             docker.io/fluidattacks/sca:latest .
-          
+
           echo -e "\n=== Verificando salida del comando SCA ==="
           ls -la
         continue-on-error: true
-        with:
-          args: sca scan .fluidattacks/config.yaml
 
       - name: Process SCA results
         if: steps.sca.outcome == 'failure' || steps.sca.outcome == 'success'
@@ -104,43 +100,43 @@ jobs:
         run: |
           # Crear directorio para reportes
           mkdir -p reports
-          
+
           # Inicializar archivos CSV vacíos si no existen
           if [ ! -f reports/sast-results.csv ]; then
             echo "vulnerability_id,severity,file,line,description,remediation" > reports/sast-results.csv
           fi
-          
+
           if [ ! -f reports/sca-results.csv ]; then
             echo "package_name,version,severity,vulnerability_id,description,remediation" > reports/sca-results.csv
           fi
-          
+
           # Crear resumen de vulnerabilidades
           sast_count=$(( $(wc -l < reports/sast-results.csv) - 1 ))
           sca_count=$(( $(wc -l < reports/sca-results.csv) - 1 ))
-          
+
           # Crear archivo de resumen
           echo "Tipo,Total" > reports/summary.csv
           echo "Vulnerabilidades SAST,$sast_count" >> reports/summary.csv
           echo "Vulnerabilidades SCA,$sca_count" >> reports/summary.csv
           echo "Total,$((sast_count + sca_count))" >> reports/summary.csv
-          
+
           # Mostrar resumen
           echo "🔍 Resumen de vulnerabilidades:"
           cat reports/summary.csv | column -t -s,
-          
+
           # Crear un archivo README.md con instrucciones
           cat > reports/README.md << 'EOL'
           # Reportes de Seguridad
-          
+
           Este directorio contiene los reportes de seguridad generados por Fluid Attacks.
-          
+
           ## Archivos disponibles:
           - `sast-results.csv`: Vulnerabilidades encontradas en el código fuente
           - `sca-results.csv`: Dependencias con vulnerabilidades conocidas
           - `summary.csv`: Resumen de vulnerabilidades encontradas
-          
+
           ## Cómo interpretar los reportes:
-          
+
           ### SAST (Análisis Estático de Código Fuente)
           - `vulnerability_id`: Identificador único de la vulnerabilidad
           - `severity`: Nivel de severidad (Critical, High, Medium, Low)
@@ -148,7 +144,7 @@ jobs:
           - `line`: Número de línea donde se encontró la vulnerabilidad
           - `description`: Descripción de la vulnerabilidad
           - `remediation`: Recomendaciones para solucionar la vulnerabilidad
-          
+
           ### SCA (Análisis de Dependencias)
           - `package_name`: Nombre del paquete vulnerable
           - `version`: Versión del paquete
@@ -157,7 +153,7 @@ jobs:
           - `description`: Descripción de la vulnerabilidad
           - `remediation`: Versión recomendada para actualizar
           EOL
-          
+
           # Guardar el resumen como variable de entorno
           echo "SCAN_SUMMARY=$(cat reports/summary.csv | base64 -w 0)" >> $GITHUB_ENV
 
@@ -173,7 +169,7 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
           compression-level: 0
-    
+
       - name: Fail if vulnerabilities found
         if: steps.sast.outcome == 'failure' || steps.sca.outcome == 'failure'
         run: |
