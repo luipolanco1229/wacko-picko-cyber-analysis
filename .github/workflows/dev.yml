@@ -21,7 +21,7 @@ jobs:
         id: sast_scan
         uses: docker://docker.io/fluidattacks/sast:latest
         with:
-          args: sast --strict scan fluidattacks.config.yml
+          args: scan --config fluidattacks-sast.config.yml
             
       - name: Upload SAST scan results
         if: always()
@@ -37,7 +37,7 @@ jobs:
         id: sca_scan
         uses: docker://docker.io/fluidattacks/sca:latest
         with:
-          args: sca --strict scan fluidattacks.config.yml
+          args: scan --config fluidattacks-sca.config.yml
           
       - name: Upload SCA scan results
         if: always()
