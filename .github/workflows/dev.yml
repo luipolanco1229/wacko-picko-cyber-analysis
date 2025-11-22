@@ -17,11 +17,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Fluid Attacks SAST Scan with fluidattacks.config.yaml
+      - name: Run Fluid Attacks SAST Scan with fluidattacks-config.yaml
         id: sast_scan
         uses: docker://docker.io/fluidattacks/sast:latest
         with:
-          args: sast --strict scan fluidattacks.config.yaml
+          args: sast --strict scan fluidattacks-sast-config.yaml
             
       - name: Upload SAST scan results
         if: always()
@@ -30,14 +30,14 @@ jobs:
           name: sast-results-with-config
           path: |
             Security-SAST.csv
-            fluidattacks-sast.config.yaml
+            fluidattacks-sast-config.yaml
           retention-days: 30
           
       - name: Run Fluid Attacks SCA Scan with fluidattacks.config.yaml
         id: sca_scan
         uses: docker://docker.io/fluidattacks/sca:latest
         with:
-          args: sca --strict scan fluidattacks.config.yaml
+          args: sca --strict scan fluidattacks-sca-config.yaml
           
       - name: Upload SCA scan results
         if: always()
@@ -46,7 +46,7 @@ jobs:
           name: sca-results-with-config
           path: |
             Security-SCA.csv
-            fluidattacks-sca.config.yaml
+            fluidattacks-sca-config.yaml
           retention-days: 30
 
   semgrep:
