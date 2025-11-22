@@ -17,11 +17,14 @@ jobs:
       sast_args: ${{ steps.set.outputs.sast_args }}
       sca_args: ${{ steps.set.outputs.sca_args }}
     steps:
-      - name: Set arguments (strict + CSV export)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set arguments from config file
         id: set
         run: |
-          echo "sast_args=sast --strict scan . --format csv --output fluidattacks_sast_results.csv" >> $GITHUB_OUTPUT
-          echo "sca_args=sca --strict scan . --format csv --output fluidattacks_sca_results.csv" >> $GITHUB_OUTPUT
+          echo "sast_args=sast --strict scan . --config fluidattacks.config.yml" >> $GITHUB_OUTPUT
+          echo "sca_args=sca --strict scan . --config fluidattacks.config.yml" >> $GITHUB_OUTPUT
       - name: Show config
         run: |
           echo "SAST args: ${{ steps.set.outputs.sast_args }}"
@@ -49,25 +52,24 @@ jobs:
 
       - name: List generated CSV files
         run: |
-          ls -l *.csv || echo "No CSV files found"
+          ls -l Security-*.csv || echo "No se encontraron archivos de resultados"
 
       - name: Upload FluidAttacks CSV artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: fluidattacks-csv-results
+          name: security-scan-results
           path: |
-            fluidattacks_sast_results.csv
-            fluidattacks_sca_results.csv
+            Security-SAST-Analysis.csv
+            Security-SCA-Analysis.csv
 
       - name: Parse CSV and fail on findings
         run: |
-          # Ajusta el parsing según columnas reales del CSV.
-          # Ejemplo: si la severidad está en cualquier línea con palabras clave.
-          if grep -qiE "(critical|high|medium)" fluidattacks_sast_results.csv fluidattacks_sca_results.csv; then
-            echo "::error::Vulnerabilidades detectadas en los archivos CSV de FluidAttacks"
+          # Verifica si existen archivos CSV y busca vulnerabilidades críticas/altas
+          if grep -qiE "(critical|high)" Security-SAST-Analysis.csv Security-SCA-Analysis.csv 2>/dev/null; then
+            echo "::error::Vulnerabilidades críticas o altas detectadas en los análisis de seguridad"
             exit 1
           else
-            echo "Sin coincidencias de severidad (critical/high/medium)."
+            echo "Análisis completado: sin vulnerabilidades críticas/altas detectadas."
           fi
 
       - name: FluidAttacks summary
