@@ -1,4 +1,4 @@
-name: CI - Security Suite (FluidAttacks SAST/SCA + Semgrep) - STRICT
+name: CI - FluidAttacks (SAST + SCA) - CSV before fail
 on:
   workflow_dispatch: {}
   pull_request: {}
@@ -6,8 +6,6 @@ on:
     branches:
       - main
       - master
-  schedule:
-    - cron: "12 15 * * *"
 
 jobs:
   fluidattacks_scans:
@@ -116,4 +114,4 @@ jobs:
             echo "::error::Semgrep encontró hallazgos que incumplen políticas"
             exit 1
           fi
-          echo "Semgrep finalizó sin hallazgos bloqueantes"
+        # Keep this step blocking so the job fails after artifacts are uploaded if issues exist
