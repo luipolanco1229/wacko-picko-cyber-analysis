@@ -10,86 +10,92 @@ on:
     - cron: "12 15 * * *"
 
 jobs:
-  config:
-    name: Build scan configuration
-    runs-on: ubuntu-latest
-    outputs:
-      sast_args: ${{ steps.set.outputs.sast_args }}
-      sca_args: ${{ steps.set.outputs.sca_args }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set arguments from config file
-        id: set
-        run: |
-          echo "sast_args=sast scan ." >> $GITHUB_OUTPUT
-          echo "sca_args=sca scan ." >> $GITHUB_OUTPUT
-      - name: Show config
-        run: |
-          echo "SAST args: ${{ steps.set.outputs.sast_args }}"
-          echo "SCA  args: ${{ steps.set.outputs.sca_args }}"
-
   fluidattacks_scans:
-    name: FluidAttacks scans (Strict + CSV)
-    needs: config
+    name: FluidAttacks scans (SAST + SCA) with Config
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run SAST scan
+      - name: Validate fluidattacks.config.yml exists
+        run: |
+          if [ ! -f fluidattacks.config.yml ]; then
+            echo "Error: fluidattacks.config.yml no encontrado"
+            exit 1
+          fi
+          echo "fluidattacks.config.yml encontrado"
+
+      - name: Run SAST scan with config
         id: sast
         uses: docker://docker.io/fluidattacks/sast:latest
         with:
-          args: ${{ needs.config.outputs.sast_args }}
+          args: sast --strict scan fluidattacks.config.yml
         continue-on-error: true
 
-      - name: Run SCA scan
+      - name: Run SCA scan with config  
         id: sca
         uses: docker://docker.io/fluidattacks/sca:latest
         with:
-          args: ${{ needs.config.outputs.sca_args }}
+          args: sca --strict scan fluidattacks.config.yml
         continue-on-error: true
 
-      - name: List generated CSV files
+      - name: List generated result files
         run: |
-          ls -l Security-*.csv || echo "No se encontraron archivos de resultados"
+          echo "=== Archivos de resultados generados ==="
+          ls -la Security-*.csv 2>/dev/null || echo "No se encontraron archivos CSV de Security"
 
-      - name: Upload FluidAttacks CSV artifacts
+      - name: Upload FluidAttacks scan results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: security-scan-results
+          name: fluidattacks-security-results
           path: |
-            Security-SAST-Analysis.csv
-            Security-SCA-Analysis.csv
+            Security-SAST.csv
+            Security-SCA.csv
+            fluidattacks.config.yml
+          retention-days: 30
 
-      - name: Parse CSV and fail on findings
+      - name: Parse results and fail on critical/high findings
         run: |
-          # Verifica si existen archivos CSV y busca vulnerabilidades críticas/altas
-          if [ -f "Security-SAST-Analysis.csv" ] || [ -f "Security-SCA-Analysis.csv" ]; then
-            if grep -qiE "(critical|high)" Security-*.csv 2>/dev/null; then
+          echo "=== Verificando resultados de seguridad ==="
+          
+          # Verificar archivos de resultados
+          sast_exists=false
+          sca_exists=false
+          
+          if [ -f "Security-SAST.csv" ]; then
+            echo "✅ Archivo SAST encontrado"
+            sast_exists=true
+          fi
+          
+          if [ -f "Security-SCA.csv" ]; then
+            echo "✅ Archivo SCA encontrado"  
+            sca_exists=true
+          fi
+          
+          # Buscar vulnerabilidades críticas/altas
+          if [ "$sast_exists" = true ] || [ "$sca_exists" = true ]; then
+            if grep -qriE "(critical|high)" Security-*.csv 2>/dev/null; then
               echo "::error::Vulnerabilidades críticas o altas detectadas en los análisis de seguridad"
               exit 1
             else
-              echo "Análisis completado: sin vulnerabilidades críticas/altas detectadas."
+              echo "✅ No se detectaron vulnerabilidades críticas/altas"
             fi
           else
-            echo "::warning::No se generaron archivos CSV. Verificando códigos de salida de los scans..."
+            # Si no hay archivos CSV, verificar códigos de salida
             if [ "${{ steps.sast.outcome }}" = "failure" ] || [ "${{ steps.sca.outcome }}" = "failure" ]; then
               echo "::error::Los scans SAST/SCA fallaron - posibles vulnerabilidades encontradas"
               exit 1
             else
-              echo "Los scans completaron exitosamente"
+              echo "✅ Scans completados exitosamente"
             fi
           fi
 
       - name: FluidAttacks summary
         if: success()
         run: |
-          echo "✅ FluidAttacks SAST/SCA estrictos completados sin vulnerabilidades críticas/altas/medias"
-
-  semgrep:
+          echo "✅ FluidAttacks SAST/SCA completados sin vulnerabilidades críticas/altas"
+          echo "Archivos de resultados subidos como artifacts"  semgrep:
     name: semgrep/ci - STRICT
     runs-on: ubuntu-latest
     permissions:
