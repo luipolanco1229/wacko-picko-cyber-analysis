@@ -15,26 +15,26 @@ jobs:
       runs-on: ubuntu-latest
       steps:
          - name: Checkout repository
-            uses: actions/checkout@v4
+           uses: actions/checkout@v4
 
          - name: FluidAttacks SAST (Docker image)
-            uses: docker://docker.io/fluidattacks/sast:latest
-            with:
-               args: sast scan /github/workspace
+           uses: docker://docker.io/fluidattacks/sast:latest
+           with:
+              args: sast scan /github/workspace
             # Allow the step to complete even if issues are found
-            continue-on-error: true
+           continue-on-error: true
 
          - name: FluidAttacks SCA (Docker image)
             # If FluidAttacks provides a dedicated SCA image, this will run it; adjust image name if needed
-            uses: docker://docker.io/fluidattacks/sca:latest
-            with:
-               args: sca scan /github/workspace
-            continue-on-error: true
+           uses: docker://docker.io/fluidattacks/sca:latest
+           with:
+              args: sca scan /github/workspace
+           continue-on-error: true
 
          - name: FluidAttacks summary
-            run: |
-               echo "FluidAttacks scans finished (SAST + SCA)."
-               echo "Steps use continue-on-error so findings won't fail the workflow."
+           run: |
+              echo "FluidAttacks scans finished (SAST + SCA)."
+              echo "Steps use continue-on-error so findings won't fail the workflow."
 
    semgrep:
       name: semgrep/ci
@@ -48,9 +48,9 @@ jobs:
       if: (github.actor != 'dependabot[bot]')
       steps:
          - name: Checkout repository
-            uses: actions/checkout@v4
+           uses: actions/checkout@v4
 
          - name: Run semgrep CI
-            run: semgrep ci
+           run: semgrep ci
             # Do not fail the workflow on semgrep findings for now
-            continue-on-error: true
+           continue-on-error: true
