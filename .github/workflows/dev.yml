@@ -22,10 +22,20 @@ jobs:
 
       - name: Run FluidAttacks SAST with config
         id: sast
-        uses: docker://docker.io/fluidattacks/sast:latest
+        run: |
+          # Ejecutar SAST con salida a archivo específico
+          docker run --rm -v "$(pwd):/src" \
+            docker.io/fluidattacks/sast:latest \
+            sast scan --config .fluidattacks/config.yaml --output-file=fluidattacks-sast-report.csv --verbose
         continue-on-error: true
-        with:
-          args: sast scan --config .fluidattacks/config.yaml
+
+      - name: Debug - List files after SAST
+        run: |
+          echo "=== Archivos en el directorio actual ==="
+          ls -la
+          echo -e "\n=== Contenido del directorio reports/ ==="
+          mkdir -p reports
+          ls -la reports/
 
       - name: Process SAST results
         if: steps.sast.outcome == 'failure' || steps.sast.outcome == 'success'
@@ -33,9 +43,9 @@ jobs:
           # Crear directorio de reportes si no existe
           mkdir -p reports
           
-          # Verificar si el archivo de reporte CSV existe
-          if [ -f fluidattacks-report.csv ]; then
-            cp fluidattacks-report.csv reports/sast-results.csv
+          # Verificar si el archivo de reporte SAST CSV existe
+          if [ -f fluidattacks-sast-report.csv ]; then
+            cp fluidattacks-sast-report.csv reports/sast-results.csv
             echo "SAST Report Summary:"
             # Contar líneas (restamos 1 por el encabezado)
             line_count=$(wc -l < reports/sast-results.csv)
@@ -51,17 +61,19 @@ jobs:
 
       - name: Run FluidAttacks SCA with config
         id: sca
-        uses: docker://docker.io/fluidattacks/sca:latest
+        run: |
+          # Ejecutar SCA con salida a archivo específico
+          docker run --rm -v "$(pwd):/src" \
+            docker.io/fluidattacks/sca:latest \
+            sca scan --config .fluidattacks/config.yaml --output-file=fluidattacks-sca-report.csv --verbose
         continue-on-error: true
-        with:
-          args: sca scan --config .fluidattacks/config.yaml
 
       - name: Process SCA results
         if: steps.sca.outcome == 'failure' || steps.sca.outcome == 'success'
         run: |
-          # Verificar si el archivo de reporte CSV existe
-          if [ -f fluidattacks-report.csv ]; then
-            cp fluidattacks-report.csv reports/sca-results.csv
+          # Verificar si el archivo de reporte SCA CSV existe
+          if [ -f fluidattacks-sca-report.csv ]; then
+            cp fluidattacks-sca-report.csv reports/sca-results.csv
             echo "SCA Report Summary:"
             # Contar líneas (restamos 1 por el encabezado)
             line_count=$(wc -l < reports/sca-results.csv)
