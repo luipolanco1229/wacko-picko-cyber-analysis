@@ -31,10 +31,10 @@ jobs:
         run: |
           # Ejecutar SAST con parámetros directos
           echo "=== Ejecutando SAST ==="
-          docker run --rm -v "$(pwd):/src" \
-            -e OUTPUT_FORMAT=csv \
-            -e OUTPUT_FILE=fluidattacks-sast-report.csv \
-            docker.io/fluidattacks/sast:latest .
+          # Ejecutar el comando CLI dentro del contenedor usando el archivo de config
+          docker run --rm -v "$(pwd):/src" -w /src \
+            docker.io/fluidattacks/sast:latest \
+            sast scan --config .fluidattacks/config.yaml
 
           echo -e "\n=== Verificando salida del comando ==="
           ls -la
@@ -46,9 +46,11 @@ jobs:
           # Crear directorio de reportes si no existe
           mkdir -p reports
 
-          # Verificar si el archivo de reporte SAST CSV existe
-          if [ -f fluidattacks-sast-report.csv ]; then
-            cp fluidattacks-sast-report.csv reports/sast-results.csv
+          # Verificar si el archivo de reporte SAST CSV (según config) existe
+          if [ -f fluidattacks-report.csv ]; then
+            cp fluidattacks-report.csv reports/sast-results.csv
+            # remover el reporte global para evitar sobreescritura por SCA
+            rm -f fluidattacks-report.csv
             echo "SAST Report Summary:"
             # Contar líneas (restamos 1 por el encabezado)
             line_count=$(wc -l < reports/sast-results.csv)
@@ -67,10 +69,10 @@ jobs:
         run: |
           # Ejecutar SCA con parámetros directos
           echo "=== Ejecutando SCA ==="
-          docker run --rm -v "$(pwd):/src" \
-            -e OUTPUT_FORMAT=csv \
-            -e OUTPUT_FILE=fluidattacks-sca-report.csv \
-            docker.io/fluidattacks/sca:latest .
+          # Ejecutar el comando CLI dentro del contenedor usando el archivo de config
+          docker run --rm -v "$(pwd):/src" -w /src \
+            docker.io/fluidattacks/sca:latest \
+            sca scan --config .fluidattacks/config.yaml
 
           echo -e "\n=== Verificando salida del comando SCA ==="
           ls -la
@@ -79,9 +81,9 @@ jobs:
       - name: Process SCA results
         if: steps.sca.outcome == 'failure' || steps.sca.outcome == 'success'
         run: |
-          # Verificar si el archivo de reporte SCA CSV existe
-          if [ -f fluidattacks-sca-report.csv ]; then
-            cp fluidattacks-sca-report.csv reports/sca-results.csv
+          # Verificar si el archivo de reporte SCA CSV (según config) existe
+          if [ -f fluidattacks-report.csv ]; then
+            cp fluidattacks-report.csv reports/sca-results.csv
             echo "SCA Report Summary:"
             # Contar líneas (restamos 1 por el encabezado)
             line_count=$(wc -l < reports/sca-results.csv)
@@ -163,9 +165,8 @@ jobs:
         with:
           name: debug-files
           path: |
+            reports/*.csv
             .fluidattacks/
-            fluidattacks-*
-            reports/
           retention-days: 7
           if-no-files-found: warn
           compression-level: 0
