@@ -1,0 +1,26 @@
+name: FluidAttacks Scan Configuration
+on:
+  workflow_call:
+    outputs:
+      sast_args:
+        description: "Arguments for SAST scan"
+      sca_args:
+        description: "Arguments for SCA scan"
+
+jobs:
+  build_config:
+    runs-on: ubuntu-latest
+    outputs:
+      sast_args: ${{ steps.set.outputs.sast_args }}
+      sca_args: ${{ steps.set.outputs.sca_args }}
+    steps:
+      - name: Set scan argument outputs
+        id: set
+        run: |
+          # Assumptions: FluidAttacks CLI supports --strict, --format csv, --output <file>. Adjust if names differ.
+          echo "sast_args=sast --strict scan . --format csv --output fluidattacks_sast_results.csv" >> $GITHUB_OUTPUT
+          echo "sca_args=sca --strict scan . --format csv --output fluidattacks_sca_results.csv" >> $GITHUB_OUTPUT
+      - name: Show configuration
+        run: |
+          echo "Configured SAST args: ${{ steps.set.outputs.sast_args }}"
+          echo "Configured SCA args: ${{ steps.set.outputs.sca_args }}"

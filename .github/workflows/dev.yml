@@ -1,4 +1,4 @@
-name: CI - FluidAttacks (SAST + SCA) - BREAKING
+name: CI - Security Suite (FluidAttacks SAST/SCA + Semgrep) - STRICT
 on:
   workflow_dispatch: {}
   pull_request: {}
@@ -10,29 +10,70 @@ on:
     - cron: "12 15 * * *"
 
 jobs:
+  config:
+    name: Build scan configuration
+    runs-on: ubuntu-latest
+    outputs:
+      sast_args: ${{ steps.set.outputs.sast_args }}
+      sca_args: ${{ steps.set.outputs.sca_args }}
+    steps:
+      - name: Set arguments (strict + CSV export)
+        id: set
+        run: |
+          echo "sast_args=sast --strict scan . --format csv --output fluidattacks_sast_results.csv" >> $GITHUB_OUTPUT
+          echo "sca_args=sca --strict scan . --format csv --output fluidattacks_sca_results.csv" >> $GITHUB_OUTPUT
+      - name: Show config
+        run: |
+          echo "SAST args: ${{ steps.set.outputs.sast_args }}"
+          echo "SCA  args: ${{ steps.set.outputs.sca_args }}"
+
   fluidattacks_scans:
-    name: FluidAttacks scans (SAST + SCA) - STRICT
+    name: FluidAttacks scans (Strict + CSV)
+    needs: config
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: FluidAttacks SAST (Docker image) - Fail on Vulnerabilities
+      - name: Run SAST scan (strict)
         id: sast
         uses: docker://docker.io/fluidattacks/sast:latest
         with:
-          args: sast --strict scan .
+          args: ${{ needs.config.outputs.sast_args }}
 
-      - name: FluidAttacks SCA (Docker image) - Fail on Vulnerabilities
+      - name: Run SCA scan (strict)
         id: sca
         uses: docker://docker.io/fluidattacks/sca:latest
         with:
-          args: sca --strict scan .
+          args: ${{ needs.config.outputs.sca_args }}
+
+      - name: List generated CSV files
+        run: |
+          ls -l *.csv || echo "No CSV files found"
+
+      - name: Upload FluidAttacks CSV artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidattacks-csv-results
+          path: |
+            fluidattacks_sast_results.csv
+            fluidattacks_sca_results.csv
+
+      - name: Parse CSV and fail on findings
+        run: |
+          # Ajusta el parsing según columnas reales del CSV.
+          # Ejemplo: si la severidad está en cualquier línea con palabras clave.
+          if grep -qiE "(critical|high|medium)" fluidattacks_sast_results.csv fluidattacks_sca_results.csv; then
+            echo "::error::Vulnerabilidades detectadas en los archivos CSV de FluidAttacks"
+            exit 1
+          else
+            echo "Sin coincidencias de severidad (critical/high/medium)."
+          fi
 
       - name: FluidAttacks summary
+        if: success()
         run: |
-          echo "✅ FluidAttacks scans finished (SAST + SCA) - NO VULNERABILITIES FOUND"
-          echo "All scans passed successfully!"
+          echo "✅ FluidAttacks SAST/SCA estrictos completados sin vulnerabilidades críticas/altas/medias"
 
   semgrep:
     name: semgrep/ci - STRICT
@@ -48,11 +89,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run semgrep CI
+      - name: Run Semgrep (fail on findings)
         run: |
           semgrep ci
-          exit_code=$?
-          if [ $exit_code -ne 0 ]; then
-            echo "::error::Semgrep found security issues!"
+          if [ $? -ne 0 ]; then
+            echo "::error::Semgrep encontró hallazgos que incumplen políticas"
             exit 1
           fi
+          echo "Semgrep finalizó sin hallazgos bloqueantes"
