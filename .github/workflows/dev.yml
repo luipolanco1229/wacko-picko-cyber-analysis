@@ -17,16 +17,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create FluidAttacks config directory
-        run: mkdir -p .fluidattacks
+      # Configuración movida a variables de entorno
+
+      - name: Show environment info
+        run: |
+          echo "=== Información del entorno ==="
+          echo "Directorio actual: $(pwd)"
+          echo -e "\n=== Contenido del directorio ==="
+          ls -la
 
       - name: Run FluidAttacks SAST with config
         id: sast
         run: |
-          # Ejecutar SAST con salida a archivo específico
+          # Ejecutar SAST con parámetros directos
+          echo "=== Ejecutando SAST ==="
           docker run --rm -v "$(pwd):/src" \
-            docker.io/fluidattacks/sast:latest \
-            sast scan --config .fluidattacks/config.yaml --output-file=fluidattacks-sast-report.csv --verbose
+            -e OUTPUT_FORMAT=csv \
+            -e OUTPUT_FILE=fluidattacks-sast-report.csv \
+            docker.io/fluidattacks/sast:latest .
+          
+          echo -e "\n=== Verificando salida del comando ==="
+          ls -la
         continue-on-error: true
 
       - name: Debug - List files after SAST
@@ -62,10 +73,15 @@ jobs:
       - name: Run FluidAttacks SCA with config
         id: sca
         run: |
-          # Ejecutar SCA con salida a archivo específico
+          # Ejecutar SCA con parámetros directos
+          echo "=== Ejecutando SCA ==="
           docker run --rm -v "$(pwd):/src" \
-            docker.io/fluidattacks/sca:latest \
-            sca scan --config .fluidattacks/config.yaml --output-file=fluidattacks-sca-report.csv --verbose
+            -e OUTPUT_FORMAT=csv \
+            -e OUTPUT_FILE=fluidattacks-sca-report.csv \
+            docker.io/fluidattacks/sca:latest .
+          
+          echo -e "\n=== Verificando salida del comando SCA ==="
+          ls -la
         continue-on-error: true
 
       - name: Process SCA results
@@ -149,16 +165,19 @@ jobs:
           # Guardar el resumen como variable de entorno
           echo "SCAN_SUMMARY=$(cat reports/summary.csv | base64 -w 0)" >> $GITHUB_ENV
 
-      - name: Upload vulnerability reports
+      - name: Upload all files for debugging
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: security-reports
+          name: debug-files
           path: |
+            .fluidattacks/
+            fluidattacks-*
             reports/
-            fluidattacks-*.json
           retention-days: 7
-
+          if-no-files-found: warn
+          compression-level: 0
+    
       - name: Fail if vulnerabilities found
         if: steps.sast.outcome == 'failure' || steps.sca.outcome == 'failure'
         run: |
