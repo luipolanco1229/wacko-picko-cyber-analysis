@@ -30,7 +30,7 @@ jobs:
           args: sast --strict scan fluidattacks.config.yml
         continue-on-error: true
 
-      - name: Run SCA scan with config  
+      - name: Run SCA scan with config
         id: sca
         uses: docker://docker.io/fluidattacks/sca:latest
         with:
@@ -56,21 +56,21 @@ jobs:
       - name: Parse results and fail on critical/high findings
         run: |
           echo "=== Verificando resultados de seguridad ==="
-          
+
           # Verificar archivos de resultados
           sast_exists=false
           sca_exists=false
-          
+
           if [ -f "Security-SAST.csv" ]; then
             echo "✅ Archivo SAST encontrado"
             sast_exists=true
           fi
-          
+
           if [ -f "Security-SCA.csv" ]; then
             echo "✅ Archivo SCA encontrado"  
             sca_exists=true
           fi
-          
+
           # Buscar vulnerabilidades críticas/altas
           if [ "$sast_exists" = true ] || [ "$sca_exists" = true ]; then
             if grep -qriE "(critical|high)" Security-*.csv 2>/dev/null; then
@@ -93,7 +93,9 @@ jobs:
         if: success()
         run: |
           echo "✅ FluidAttacks SAST/SCA completados sin vulnerabilidades críticas/altas"
-          echo "Archivos de resultados subidos como artifacts"  semgrep:
+          echo "Archivos de resultados subidos como artifacts"
+
+  semgrep:
     name: semgrep/ci - STRICT
     runs-on: ubuntu-latest
     permissions:
@@ -114,4 +116,4 @@ jobs:
             echo "::error::Semgrep encontró hallazgos que incumplen políticas"
             exit 1
           fi
-        # Keep this step blocking so the job fails after artifacts are uploaded if issues exist
+          echo "Semgrep finalizó sin hallazgos bloqueantes"
