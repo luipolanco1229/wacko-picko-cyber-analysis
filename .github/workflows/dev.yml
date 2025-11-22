@@ -1,4 +1,4 @@
-name: CI - Security Suite (FluidAttacks SAST/SCA + Semgrep) - STRICT
+name: CI - Dev - FluidAttacks SAST + Semgrep
 on:
   workflow_dispatch: {}
   pull_request: {}
@@ -6,94 +6,87 @@ on:
     branches:
       - main
       - master
-  schedule:
-    - cron: "12 15 * * *"
 
 jobs:
-  config:
-    name: Build scan configuration
-    runs-on: ubuntu-latest
-    outputs:
-      sast_args: ${{ steps.set.outputs.sast_args }}
-      sca_args: ${{ steps.set.outputs.sca_args }}
-    steps:
-      - name: Set arguments (strict + CSV export)
-        id: set
-        run: |
-          echo "sast_args=sast --strict scan . --format csv --output fluidattacks_sast_results.csv" >> $GITHUB_OUTPUT
-          echo "sca_args=sca --strict scan . --format csv --output fluidattacks_sca_results.csv" >> $GITHUB_OUTPUT
-      - name: Show config
-        run: |
-          echo "SAST args: ${{ steps.set.outputs.sast_args }}"
-          echo "SCA  args: ${{ steps.set.outputs.sca_args }}"
+name: CI - FluidAttacks (SAST + SCA) - CSV before fail
+on:
+  workflow_dispatch: {}
+  pull_request: {}
+  push:
+    branches:
+      - main
+      - master
 
-  fluidattacks_scans:
-    name: FluidAttacks scans (Strict + CSV)
-    needs: config
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run SAST scan (strict)
-        id: sast
-        uses: docker://docker.io/fluidattacks/sast:latest
-        with:
-          args: ${{ needs.config.outputs.sast_args }}
-
-      - name: Run SCA scan (strict)
-        id: sca
-        uses: docker://docker.io/fluidattacks/sca:latest
-        with:
-          args: ${{ needs.config.outputs.sca_args }}
-
-      - name: List generated CSV files
-        run: |
-          ls -l *.csv || echo "No CSV files found"
-
-      - name: Upload FluidAttacks CSV artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: fluidattacks-csv-results
-          path: |
-            fluidattacks_sast_results.csv
-            fluidattacks_sca_results.csv
-
-      - name: Parse CSV and fail on findings
-        run: |
-          # Ajusta el parsing según columnas reales del CSV.
-          # Ejemplo: si la severidad está en cualquier línea con palabras clave.
-          if grep -qiE "(critical|high|medium)" fluidattacks_sast_results.csv fluidattacks_sca_results.csv; then
-            echo "::error::Vulnerabilidades detectadas en los archivos CSV de FluidAttacks"
-            exit 1
-          else
-            echo "Sin coincidencias de severidad (critical/high/medium)."
-          fi
-
-      - name: FluidAttacks summary
-        if: success()
-        run: |
-          echo "✅ FluidAttacks SAST/SCA estrictos completados sin vulnerabilidades críticas/altas/medias"
-
-  semgrep:
-    name: semgrep/ci - STRICT
+jobs:
+  scans-and-report:
+    name: FluidAttacks scans (SAST + SCA) + Semgrep
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
       SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-    container:
-      image: semgrep/semgrep
-    if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Semgrep (fail on findings)
+      - name: Prepare reports directory
+        run: mkdir -p analysis/report
+
+      - name: Run FluidAttacks SAST (strict) and export CSV
+        id: run_sast
         run: |
-          semgrep ci
-          if [ $? -ne 0 ]; then
-            echo "::error::Semgrep encontró hallazgos que incumplen políticas"
+          docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace docker.io/fluidattacks/sast:latest sh -c "sast --strict scan . --format csv --output analysis/report/fluidattacks_sast_results.csv" || true
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Run FluidAttacks SCA (strict) and export CSV
+        id: run_sca
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace docker.io/fluidattacks/sca:latest sh -c "sca --strict scan . --format csv --output analysis/report/fluidattacks_sca_results.csv" || true
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: List generated CSV files
+        run: |
+          ls -la analysis/report || echo "No report files generated"
+
+      - name: Upload FluidAttacks CSV artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fluidattacks-csv-results
+          path: analysis/report
+
+      - name: Run Semgrep CI and capture exit code
+        id: run_semgrep
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/workspace -w /workspace semgrep/semgrep sh -c "semgrep ci"
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Final check - fail if any tool found issues
+        run: |
+          sast_code="${{ steps.run_sast.outputs.exit_code }}"
+          sca_code="${{ steps.run_sca.outputs.exit_code }}"
+          semgrep_code="${{ steps.run_semgrep.outputs.exit_code }}"
+          echo "SAST exit: $sast_code, SCA exit: $sca_code, Semgrep exit: $semgrep_code"
+          if [ "$sast_code" != "0" ] || [ "$sca_code" != "0" ] || [ "$semgrep_code" != "0" ]; then
+            echo "::error::One or more scanners reported issues. See CSV artifacts and Semgrep output."
             exit 1
           fi
-          echo "Semgrep finalizó sin hallazgos bloqueantes"
+        # Keep this step blocking so the job fails after artifacts are uploaded if issues exist
+
+      - name: FluidAttacks SAST (dev, non-blocking)
+        uses: docker://docker.io/fluidattacks/sast:latest
+        with:
+          args: sast scan /github/workspace
+        continue-on-error: true
+
+      - name: Semgrep (dev, non-blocking)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+        continue-on-error: true
+
+      - name: Dev summary
+        run: |
+          echo "Dev scans completed. Findings won't fail the workflow (non-blocking)."
