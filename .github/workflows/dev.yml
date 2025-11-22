@@ -17,25 +17,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: FluidAttacks SAST (Docker image)
+      - name: FluidAttacks SAST (Docker image) - Fail on Vulnerabilities
         id: sast
-        run: |
-          docker run --rm -v ${{ github.workspace }}:/github/workspace docker.io/fluidattacks/sast:latest sast scan /github/workspace
-          exit_code=$?
-          if [ $exit_code -ne 0 ]; then
-            echo "::error::SAST scan found vulnerabilities or failed!"
-            exit 1
-          fi
+        uses: docker://docker.io/fluidattacks/sast:latest
+        with:
+          args: sast --strict scan .
 
-      - name: FluidAttacks SCA (Docker image)
+      - name: FluidAttacks SCA (Docker image) - Fail on Vulnerabilities
         id: sca
-        run: |
-          docker run --rm -v ${{ github.workspace }}:/github/workspace docker.io/fluidattacks/sca:latest sca scan /github/workspace
-          exit_code=$?
-          if [ $exit_code -ne 0 ]; then
-            echo "::error::SCA scan found vulnerabilities or failed!"
-            exit 1
-          fi
+        uses: docker://docker.io/fluidattacks/sca:latest
+        with:
+          args: sca --strict scan .
 
       - name: FluidAttacks summary
         run: |
