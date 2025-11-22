@@ -18,23 +18,29 @@ jobs:
         uses: actions/checkout@v4
 
       - name: FluidAttacks SAST (Docker image)
-        uses: docker://docker.io/fluidattacks/sast:latest
-        with:
-          args: sast scan /github/workspace
-          # Fail the workflow if vulnerabilities are found
+        id: sast
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/github/workspace docker.io/fluidattacks/sast:latest sast scan /github/workspace
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::SAST scan found vulnerabilities or failed!"
+            exit 1
+          fi
 
-      - name:
-          FluidAttacks SCA (Docker image)
-          # If FluidAttacks provides a dedicated SCA image, this will run it; adjust image name if needed
-        uses: docker://docker.io/fluidattacks/sca:latest
-        with:
-          args: sca scan /github/workspace
-          # Fail the workflow if vulnerabilities are found
+      - name: FluidAttacks SCA (Docker image)
+        id: sca
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/github/workspace docker.io/fluidattacks/sca:latest sca scan /github/workspace
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::SCA scan found vulnerabilities or failed!"
+            exit 1
+          fi
 
       - name: FluidAttacks summary
         run: |
-          echo "FluidAttacks scans finished (SAST + SCA)."
-          echo "All vulnerabilities must be addressed - workflow will fail on findings."
+          echo "✅ FluidAttacks scans finished (SAST + SCA) - NO VULNERABILITIES FOUND"
+          echo "All scans passed successfully!"
 
   semgrep:
     name: semgrep/ci - STRICT
@@ -51,6 +57,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run semgrep CI
-        run:
+        run: |
           semgrep ci
-          # Fail the workflow on semgrep findings
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::Semgrep found security issues!"
+            exit 1
+          fi
