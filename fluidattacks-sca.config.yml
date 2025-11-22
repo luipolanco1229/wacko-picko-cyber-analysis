@@ -1,0 +1,15 @@
+namespace: wackopicko
+output:
+  file_path: ./Security-SCA.csv
+  format: CSV
+
+working_dir: .
+language: EN
+
+sca:
+  include:
+    - .
+  exclude:
+    - glob(**/node_modules/**)
+    - glob(**/vendor/**)
+    - glob(**/dist/**)

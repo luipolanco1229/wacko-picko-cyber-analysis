@@ -30,7 +30,7 @@ jobs:
           name: sast-results-with-config
           path: |
             Security-SAST.csv
-            fluidattacks.config.yml
+            fluidattacks-sast.config.yml
           retention-days: 30
           
       - name: Run Fluid Attacks SCA Scan with fluidattacks.config.yml
@@ -46,7 +46,7 @@ jobs:
           name: sca-results-with-config
           path: |
             Security-SCA.csv
-            fluidattacks.config.yml
+            fluidattacks-sca.config.yml
           retention-days: 30
 
   semgrep:
